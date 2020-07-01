@@ -392,6 +392,7 @@ public class SpotifyManager {
                                       method: .GET,
                                       headers: self.authorizationHeader(with: token))
             { result in
+                print(result)
                 if  case let .success(data) = result,
                     let result = try? JSONDecoder().decode(SpotifyUser.self,
                                                            from: data) {
