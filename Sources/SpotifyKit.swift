@@ -7,9 +7,9 @@
 //
 
 #if !os(OSX)
-    import UIKit
+import UIKit
 #else
-    import AppKit
+import AppKit
 #endif
 
 // MARK: Token saving options
@@ -42,8 +42,27 @@ fileprivate struct SpotifyParameter {
     
     // User's library
     static let ids          = "ids"
+    
+    static let timeRange = "time_range"
 }
 
+
+public enum SpotifyTopTimeRange: String {
+    case short = "short_term",
+         medium = "medium_term",
+         long = "long_term"
+    
+    public var displayValue: String {
+        switch self {
+        case .short:
+            return "1M"
+        case .medium:
+            return "6M"
+        case .long:
+            return "∞"
+        }
+    }
+}
 /**
  Header names for Spotify HTTP requests
  */
@@ -89,6 +108,11 @@ fileprivate enum SpotifyQuery: String, URLConvertible {
         return URL(string: master.rawValue + me.rawValue + what.type.searchKey.rawValue)
     }
     
+    
+    static func topUrlFor(item: SpotifyItemType) -> URL? {
+        return URL(string: master.rawValue + me.rawValue + "top/" + item.searchKey.rawValue)
+    }
+    
     static func urlFor<T>(_ what: T.Type,
                           id: String,
                           playlistUserId: String? = nil) -> URL? where T: SpotifySearchItem {
@@ -111,6 +135,7 @@ fileprivate enum SpotifyScope: String {
     case readEmail     = "user-read-email"
     case libraryModify = "user-library-modify"
     case libraryRead   = "user-library-read"
+    case topRead = "user-top-read"
     
     /**
      Creates a string to pass as parameter value
@@ -286,7 +311,7 @@ public class SpotifyManager {
     private var tokenJsonURL: URL?
     
     // MARK: Constructors
-        
+    
     public init(with application: SpotifyDeveloperApplication) {
         self.application = application
         
@@ -315,7 +340,7 @@ public class SpotifyManager {
         // Run the requested query operation
         operation(token)
     }
-
+    
     /**
      Gets a specific Spotify item (track, album, artist or playlist
      - parameter what: the type of the item ('SpotifyTrack', 'SpotifyAlbum'...)
@@ -334,7 +359,7 @@ public class SpotifyManager {
             { result in
                 if  case let .success(data) = result,
                     let result = try? JSONDecoder().decode(what,
-                                                          from: data) {
+                                                           from: data) {
                     completionHandler(result)
                 }
             }
@@ -359,7 +384,7 @@ public class SpotifyManager {
             { result in
                 if  case let .success(data) = result,
                     let results = try? JSONDecoder().decode(SpotifyFindResponse<T>.self,
-                                                           from: data).results.items {
+                                                            from: data).results.items {
                     completionHandler(results)
                 }
             }
@@ -388,11 +413,11 @@ public class SpotifyManager {
      */
     public func myProfile(completionHandler: @escaping (SpotifyUser) -> Void) {
         tokenQuery { token in
+            
             URLSession.shared.request(SpotifyQuery.me,
                                       method: .GET,
                                       headers: self.authorizationHeader(with: token))
             { result in
-                print(result)
                 if  case let .success(data) = result,
                     let result = try? JSONDecoder().decode(SpotifyUser.self,
                                                            from: data) {
@@ -417,13 +442,13 @@ public class SpotifyManager {
         if  let application = application,
             let url = SpotifyQuery.authorize.url?.with(parameters: authorizationParameters(for: application)) {
             #if os(OSX)
-                #if swift(>=4.0)
-                    NSWorkspace.shared.open(url)
-                #else
-                    NSWorkspace.shared().open(url)
-                #endif
+            #if swift(>=4.0)
+            NSWorkspace.shared.open(url)
             #else
-                UIApplication.shared.open(url)
+            NSWorkspace.shared().open(url)
+            #endif
+            #else
+            UIApplication.shared.open(url)
             #endif
         }
     }
@@ -458,6 +483,43 @@ public class SpotifyManager {
                 saveToken(from: authorizationCode)
             }
         }
+    }
+    
+    public func saveToken(from url: URL, completionHandler: @escaping (Bool) -> Void) {
+        if  let urlComponents = URLComponents(string: url.absoluteString),
+            let queryItems    = urlComponents.queryItems {
+            
+            // Get "code=" parameter from URL
+            let code = queryItems.filter { item in item.name == "code" } .first?.value!
+            
+            // Send code to SpotifyKit
+            if let authorizationCode = code {
+                guard let application = application else { return }
+                
+                URLSession.shared.request(SpotifyQuery.token,
+                                          method: .POST,
+                                          parameters: tokenParameters(for: application,
+                                                                      from: authorizationCode))
+                { result in
+                    if case let .success(data) = result {
+                        self.token = self.generateToken(from: data)
+                        completionHandler(true)
+                        // Prints the token for debug
+                        if let token = self.token {
+                            debugPrint(token.details)
+                            
+                            switch self.tokenSavingMethod {
+                            case .preference:
+                                token.writeToKeychain()
+                            }
+                        }
+                    }
+                }
+                
+            }
+        }
+        
+        
     }
     
     /**
@@ -566,8 +628,43 @@ public class SpotifyManager {
             { result in
                 if  case let .success(data) = result,
                     let results = try? JSONDecoder().decode(SpotifyLibraryResponse<T>.self,
-                                                           from: data).items {
+                                                            from: data).items {
                     completionHandler(results)
+                }
+            }
+        }
+    }
+    
+    
+    public func topTracks(timeRange: SpotifyTopTimeRange, completionHandler: @escaping (SpotifyTopTrackResponse) -> Void) {
+        tokenQuery { token in
+            URLSession.shared.request(SpotifyQuery.topUrlFor(item: .track),
+                                      method: .GET,
+                                      parameters: self.topTrackParameters(for: timeRange),
+                                      headers: self.authorizationHeader(with: token))
+            { result in
+                if  case let .success(data) = result,
+                    let result = try? JSONDecoder().decode(SpotifyTopTrackResponse.self,
+                                                           from: data) {
+                    completionHandler(result)
+                }
+            }
+        }
+    }
+    
+    public func topArtists(timeRange: SpotifyTopTimeRange, completionHandler: @escaping (SpotifyTopArtistResponse) -> Void) {
+        tokenQuery { token in
+            URLSession.shared.request(SpotifyQuery.topUrlFor(item: .artist),
+                                      method: .GET,
+                                      parameters: self.topTrackParameters(for: timeRange),
+                                      headers: self.authorizationHeader(with: token))
+            { result in
+                
+                if  case let .success(data) = result,
+                    let result = try? JSONDecoder().decode(SpotifyTopArtistResponse.self,
+                                                           from: data) {
+                    debugPrint(result)
+                    completionHandler(result)
                 }
             }
         }
@@ -627,7 +724,7 @@ public class SpotifyManager {
                     completionHandler(false)
                 }
             }
-                
+            
         }
     }
     
@@ -696,7 +793,7 @@ public class SpotifyManager {
         return [SpotifyParameter.clientId: application.clientId,
                 SpotifyParameter.responseType: SpotifyAuthorizationResponseType.code.rawValue,
                 SpotifyParameter.redirectUri: application.redirectUri,
-                SpotifyParameter.scope: SpotifyScope.string(with: [.readPrivate, .readEmail, .libraryModify, .libraryRead])]
+                SpotifyParameter.scope: SpotifyScope.string(with: [.readPrivate, .readEmail, .libraryModify, .libraryRead, .topRead])]
     }
     
     /**
@@ -737,7 +834,7 @@ public class SpotifyManager {
      */
     private func authorizationHeader(with token: SpotifyToken) -> HTTPRequestHeaders {
         return [SpotifyHeader.authorization: SpotifyAuthorizationType.bearer.rawValue +
-            token.accessToken]
+                    token.accessToken]
     }
     
     /**
@@ -746,6 +843,10 @@ public class SpotifyManager {
      */
     private func trackIdsParameters(for trackId: String) -> HTTPRequestParameters {
         return [SpotifyParameter.ids: trackId]
+    }
+    
+    private func topTrackParameters(for timeRange: SpotifyTopTimeRange ) -> HTTPRequestParameters {
+        return [SpotifyParameter.timeRange: timeRange.rawValue]
     }
     
     /**

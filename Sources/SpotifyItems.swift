@@ -33,8 +33,19 @@ public enum SpotifyItemType: String, CodingKey {
     }
 }
 
-struct SpotifyImage: Decodable {
+public struct SpotifyUserImage: Decodable {
     var url: String
+}
+
+public struct SpotifyTrackImage: Decodable {
+//    var width: String
+//    var height: Int
+    var url: String
+}
+
+public struct SpotifyFollowers: Decodable {
+    public var total: Int
+    public var href: String?
 }
 
 // MARK: Items data types
@@ -55,17 +66,20 @@ public protocol SpotifySearchItem: SpotifyItem { }
 
 public protocol SpotifyLibraryItem: SpotifyItem { }
 
+
 public struct SpotifyUser: SpotifySearchItem {
     public var id:   String
     public var uri:  String
     public var name: String { return display_name ?? id }
+    public var followers: SpotifyFollowers
+    
     
     public static let type: SpotifyItemType = .user
     
     public var email: String?
     
     var display_name: String?
-    var images:       [SpotifyImage]
+    var images:       [SpotifyUserImage]
     
     public var artUri: String {
         return images.first?.url ?? ""
@@ -97,11 +111,14 @@ public struct SpotifyAlbum: SpotifySearchItem, SpotifyLibraryItem, SpotifyTrackC
     
     struct Image: Decodable {
         var url: String
+        var width: Int
+        var height: Int
     }
     
     public var id:   String
     public var uri:  String
     public var name: String
+    
     
     // Track list is contained only in full album objects
     var tracks: Tracks?
@@ -121,6 +138,11 @@ public struct SpotifyAlbum: SpotifySearchItem, SpotifyLibraryItem, SpotifyTrackC
     
     public var artUri: String {
         return images.first!.url
+    }
+    
+    
+    public var thumbnail: String {
+        return images[2].url
     }
 }
 
@@ -159,6 +181,21 @@ public struct SpotifyArtist: SpotifySearchItem {
     public var name: String
     
     public static let type: SpotifyItemType = .artist
+    
+    
+    
+    struct Image: Decodable {
+        var url: String
+        var width: Int
+        var height: Int
+    }
+    
+    var images: [Image]?
+    
+    
+    public var thumbnail: String {
+        return images?[2].url ?? ""
+    }
 }
 
 public struct SpotifyLibraryResponse<T> where T: SpotifyLibraryItem {
@@ -186,6 +223,28 @@ public struct SpotifyLibraryResponse<T> where T: SpotifyLibraryItem {
         return []
     }
 }
+
+public struct SpotifyTopTrackResponse: Decodable {
+    
+    public var items: [SpotifyTrack]
+}
+
+
+public struct SpotifyTopArtistResponse: Decodable {
+    
+    public var items: [SpotifyArtist]
+}
+
+
+public struct SpotifyTopItem: Decodable {
+    
+    public var name: String
+    public var type: String
+    public var uri: String
+    var images: [SpotifyTrackImage]
+    
+}
+
 
 extension SpotifyLibraryResponse.SavedItem: Decodable {
     public init(from decoder: Decoder) throws {
