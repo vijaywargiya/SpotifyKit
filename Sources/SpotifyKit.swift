@@ -44,6 +44,9 @@ fileprivate struct SpotifyParameter {
     static let ids          = "ids"
     
     static let timeRange = "time_range"
+    
+    static let volumePercent = "volume_percent"
+    static let position = "position_ms"
 }
 
 
@@ -81,7 +84,7 @@ fileprivate enum SpotifyQuery: String, URLConvertible {
         switch self {
         case .master, .account:
             return URL(string: self.rawValue)
-        case .search, .users, .me, .contains:
+        case .search, .users, .me, .contains, .currentlyPlaying, .play, .pause, .next, .prev, .volume, .seek:
             return URL(string: SpotifyQuery.master.rawValue + self.rawValue)
         case .authorize, .token:
             return URL(string: SpotifyQuery.account.rawValue + self.rawValue)
@@ -103,6 +106,14 @@ fileprivate enum SpotifyQuery: String, URLConvertible {
     // User's library
     case me        = "me/"
     case contains  = "me/tracks/contains"
+    
+    case currentlyPlaying = "me/player"
+    case play = "me/player/play"
+    case pause = "me/player/pause"
+    case next = "me/player/next"
+    case prev = "me/player/previous"
+    case volume = "me/player/volume"
+    case seek = "me/player/seek"
     
     static func libraryUrlFor<T>(_ what: T.Type) -> URL? where T: SpotifyLibraryItem {
         return URL(string: master.rawValue + me.rawValue + what.type.searchKey.rawValue)
@@ -136,6 +147,9 @@ fileprivate enum SpotifyScope: String {
     case libraryModify = "user-library-modify"
     case libraryRead   = "user-library-read"
     case topRead = "user-top-read"
+    case currentlyPlaying = "user-read-currently-playing"
+    case readPlaybackState = "user-read-playback-state"
+    case modifyPlaybackState = "user-modify-playback-state"
     
     /**
      Creates a string to pass as parameter value
@@ -663,12 +677,12 @@ public class SpotifyManager {
                 if  case let .success(data) = result,
                     let result = try? JSONDecoder().decode(SpotifyTopArtistResponse.self,
                                                            from: data) {
-                    debugPrint(result)
                     completionHandler(result)
                 }
             }
         }
     }
+    
     
     /**
      Saves a track to user's "Your Music" library
@@ -793,7 +807,7 @@ public class SpotifyManager {
         return [SpotifyParameter.clientId: application.clientId,
                 SpotifyParameter.responseType: SpotifyAuthorizationResponseType.code.rawValue,
                 SpotifyParameter.redirectUri: application.redirectUri,
-                SpotifyParameter.scope: SpotifyScope.string(with: [.readPrivate, .readEmail, .libraryModify, .libraryRead, .topRead])]
+                SpotifyParameter.scope: SpotifyScope.string(with: [.readPrivate, .readEmail, .libraryModify, .libraryRead, .topRead, .currentlyPlaying, .readPlaybackState, .modifyPlaybackState])]
     }
     
     /**
@@ -855,6 +869,86 @@ public class SpotifyManager {
      */
     private func generateToken(from data: Data) -> SpotifyToken? {
         return try? JSONDecoder().decode(SpotifyToken.self, from: data)
+    }
+    
+    
+    public func currentlyPlaying(completionHandler: @escaping (SpotifyCurrentlyPlayingResponse) -> Void) {
+        tokenQuery { token in
+            URLSession.shared.request(SpotifyQuery.currentlyPlaying.url!,
+                                      method: .GET,
+                                      headers: self.authorizationHeader(with: token))
+            { result in
+//                debugPrint(self.authorizationHeader(with: token))
+                if  case let .success(data) = result,
+                    let result = try? JSONDecoder().decode(SpotifyCurrentlyPlayingResponse.self,
+                                                           from: data) {
+                    completionHandler(result)
+                }
+            }
+        }
+    }
+    
+    
+    public func play() {
+        tokenQuery { token in
+            URLSession.shared.request(SpotifyQuery.play.url!,
+                                      method: .PUT,
+                                      headers: self.authorizationHeader(with: token)) { result in
+            }
+        }
+    }
+    
+    
+    public func pause() {
+        tokenQuery { token in
+            URLSession.shared.request(SpotifyQuery.pause.url!,
+                                      method: .PUT,
+                                      headers: self.authorizationHeader(with: token)) { result in
+            }
+        }
+    }
+    
+    
+    public func next() {
+        tokenQuery { token in
+            URLSession.shared.request(SpotifyQuery.next.url!,
+                                      method: .POST,
+                                      headers: self.authorizationHeader(with: token)) { result in
+            }
+        }
+    }
+    
+    
+    public func prev() {
+        tokenQuery { token in
+            URLSession.shared.request(SpotifyQuery.prev.url!,
+                                      method: .POST,
+                                      headers: self.authorizationHeader(with: token)) { result in
+            }
+        }
+    }
+    
+    public func updateVolume(value: Int, completionHandler: @escaping () -> Void) {
+        tokenQuery { token in
+            URLSession.shared.request(SpotifyQuery.volume.url!,
+                                      method: .PUT,
+                                      parameters: [SpotifyParameter.volumePercent: value],
+                                      headers: self.authorizationHeader(with: token)) { result in
+                
+                completionHandler()
+            }
+        }
+    }
+    
+    public func seek(value: Int, completionHandler: @escaping () -> Void) {
+        tokenQuery { token in
+            URLSession.shared.request(SpotifyQuery.seek.url!,
+                                      method: .PUT,
+                                      parameters: [SpotifyParameter.position: value],
+                                      headers: self.authorizationHeader(with: token)) { result in
+                completionHandler()
+            }
+        }
     }
     
 }

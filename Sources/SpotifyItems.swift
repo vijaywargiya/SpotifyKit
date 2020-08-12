@@ -236,6 +236,34 @@ public struct SpotifyTopArtistResponse: Decodable {
 }
 
 
+public struct SpotifyCurrentlyPlayingResponse: Decodable {
+    
+    
+    public struct SpotifyPlayerItem: Decodable {
+        public var name: String
+        public var duration_ms: Int
+        public var album: SpotifyAlbum
+        public var artists: [SpotifyArtist]
+    }
+    
+    public struct SpotifyDevice: Decodable {
+        public var id: String
+        public var is_active: Bool
+        public var is_private_session: Bool
+        public var is_restricted: Bool
+        public var name: String
+        public var type: String
+        public var volume_percent: Int
+    }
+    
+    public var is_playing: Bool
+    public var currently_playing_type: String
+    public var item: SpotifyPlayerItem
+    public var progress_ms: Int
+    public var device: SpotifyDevice
+}
+
+
 public struct SpotifyTopItem: Decodable {
     
     public var name: String
